@@ -8,15 +8,23 @@ export type ToAny<FacetT, FuncT extends (this: FacetT, ...a: any) => any> = (
   ...a: Parameters<FuncT>
 ) => any;
 
+export type Labelled<T> = { label: string; func: T };
+
+export type MaybeLabelled<T> = Labelled<T> | T;
+
+export const ret = <T>(x: T) => ({
+  label: "ret",
+  func: x,
+});
+
 type FunctionMap<FacetT, FuncT extends (this: FacetT, ...a: any) => any> = {
-  [label: string]: ToAny<FacetT, FuncT>[];
+  [label: string]: MaybeLabelled<ToAny<FacetT, FuncT>>[];
 };
 
 export class Callbacks<FacetT, FuncT extends (...a: any) => any> {
   callbacks: FunctionMap<FacetT, FuncT>;
   self: any;
   args: Parameters<FuncT>;
-  queue: Array<Function> = [];
 
   constructor(callbacks: FunctionMap<FacetT, FuncT>, self: any, args) {
     this.callbacks = callbacks;
@@ -24,7 +32,7 @@ export class Callbacks<FacetT, FuncT extends (...a: any) => any> {
     this.args = args;
   }
 
-  _schedule(label, options: any) {
+  exec(label: string, options: any) {
     const callbacks = this.callbacks[label];
 
     if (callbacks === undefined) {
@@ -34,37 +42,29 @@ export class Callbacks<FacetT, FuncT extends (...a: any) => any> {
       return undefined;
     }
 
-    callbacks.forEach((f) => this.queue.push(f));
-  }
-
-  exec(label: string, options: any) {
-    if (!label.endsWith("_pre")) {
-      this._schedule(label + "_pre", { ...options, optional: true });
-    }
-    this._schedule(label, options);
-    const result = this.flush();
-    if (!label.endsWith("_post")) {
-      this._schedule(label + "_post", { ...options, optional: true });
-    }
-    return result;
-  }
-
-  flush() {
     var result = undefined;
-    this.queue.forEach((f) => {
-      result = f.bind(this.self)(...this.args);
+    var hasResult = false;
+    callbacks.forEach((f) => {
+      const func = "func" in f ? f.func.bind(this.self) : f.bind(this.self);
+      const label = "label" in f ? f.label : "";
+      // @ts-ignore
+      const localResult = func(...this.args);
+      if (label === "ret") {
+        result = localResult;
+        hasResult = true;
+      } else if (!hasResult) {
+        result = localResult;
+      }
     });
-    this.queue = [];
     return result;
   }
 
   enter() {
-    this._schedule("enter", { optional: true });
+    this.exec("enter", optional);
   }
 
   exit() {
-    this._schedule("exit", { optional: true });
-    this.flush();
+    this.exec("exit", optional);
   }
 }
 
