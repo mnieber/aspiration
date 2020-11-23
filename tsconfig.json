@@ -1,0 +1,24 @@
+{
+  "compilerOptions": {
+    // "allowJs": true,
+    // "allowSyntheticDefaultImports": true,
+    "baseUrl": ".",
+    "declaration": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "isolatedModules": true,
+    "jsx": "react",
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "module": "esnext",
+    "moduleResolution": "node",
+    "noUnusedLocals": true,
+    // "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noImplicitAny": false,
+    "target": "es5"
+    // "experimentalDecorators": true
+  },
+  "include": ["."],
+  "exclude": ["node_modules", "dist"]
+}
