@@ -110,6 +110,29 @@ Notes:
    state immediately after "selectItem" finishes then you can explicitly insert "selectItem_post" as a callback
    in the host function.
 
+## Dealing with Promises
+
+The way that `exec` works is that the correct set of callbacks is retrieved before the host function is called, and
+used during that call. The invocation of `exec("foo")` can be interpreted as: look up and execute the "foo" callback
+for the set of callbacks that belongs to the current host function. This must be kept in mind when promises are used
+in the host function. At the time that the promise resolves, the "current set of callbacks" will be associated with
+a different host function, so we can no longer use it. Instead, we must locally cache the callbacks, as follows:
+
+```
+  @host select({ itemId, isShift, isCtrl }) {
+    // cache the set of callbacks for later used
+    const cb = getCallbacks();
+
+    if (!this.selectableIds.contains(itemId)) {
+      throw Error(`Invalid id: ${itemId}`);
+    }
+    cb.exec("selectItem").then(() => {
+      // WRONG would be: exec("doSomethingElse");
+      cb.exec("doSomethingElse");
+    });
+  }
+```
+
 ## Additional callback parameters
 
 As stated, each callback function is called with the arguments that are received by the host function. If the
