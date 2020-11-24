@@ -1,6 +1,6 @@
 {
   "name": "aspiration",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "Restricted way to do aspect oriented programming in Javascript",
   "main": "index.js",
   "repository": "https://github.com/mnieber/aspiration.git",
@@ -8,8 +8,7 @@
   "license": "MIT",
   "types": "index.d.ts",
   "prepublish": "tsc",
-  "dependencies": {
-  },
+  "dependencies": {},
   "devDependencies": {
     "typescript": "^4.0.3"
   }
