@@ -16,188 +16,88 @@ place where the callbacks are specified).
 
 # Reference documentation
 
-## The exec function
+## The host decorator
 
-Any function that accepts callbacks is decorated with the `@host` decorator. Inside a host function, you
-can use the `exec` function to trigger a callback. The client should install one or more handlers for this
-callback function. Here is an example:
+Assume that we have a function (let's call it the `host` function) that we wish to extend using AOP.
+In the example below, the host function is `Selection.select`. Currently, it does not yet take any
+callbacks:
 
 ```
+export type SelectionParamsT = {
+  itemId: any;
+  isShift?: boolean;
+  isCtrl?: boolean;
+};
+
 class Selection {
   @observable selectableIds?: Array<string>;
   // other members omitted
 
-  @host select({ itemId, isShift, isCtrl }) {
+  select(selectionParams: SelectionParamsT) {
+    const { itemId, isShift, isCtrl } = selectionParams;
     if (!this.selectableIds.contains(itemId)) {
       throw Error(`Invalid id: ${itemId}`);
     }
-    exec("selectItem");
   }
 }
 ```
 
-Notes:
+Next we do three things:
 
-1. From looking at the code we see that the `select` function expects the client to implement the "selectItem"
-   to do the actual work. It's also possible to specify an optional callback using
-   `exec("selectItem", { optional: true })`.
-
-2. The callback function that is installed to handle "selectItem" will receive the same arguments as the host
-   function. The reason for this design is that it makes the host function easier to read, and moreover, it
-   means that any additional callback functions always receive the "full" information that was provided to the
-   host function. We will later see how additional arguments can be passed to a callback function.
-
-3. It's possible to receive a return value from the callback function, e.g. `const foo = exec("select")`. Note
-   that there is no return type information, but we will see later how - to some extent - type checking with
-   Typescript is still possible.
-
-4. It's not possible to use `async` in a callback handler. However, the callback function may return a `Promise`.
-
-## The setCallbacks function
-
-We will now see how handlers can be installed, and how we can take additional action before and after a callback
-is triggered.
+- define a class that contains the callback functions
+- use the `@host` decorator to indicate that we want our function to take callbacks
+- change the host function to accept the set of callbacks
 
 ```
-function logSelect(this: Selection, { itemId, isShift, isCtrl }) {
-    console.log(`About to select ${itemId}`)
+class Selection_select {
+  selectionParams: SelectionParamsT;
+  selectItem() {}
 }
 
-function handleSelectItem(this: Selection, { itemId, isShift, isCtrl }) {
-    // do something
-}
+class Selection {
+  @observable selectableIds?: Array<string>;
+  // other members omitted
 
-function highlightItemAfterSelect(this: Selection, { itemId, isShift, isCtrl }) {
-    // do something to highlight 'itemId'
-}
-
-function foo(selection: Selection) {
-    setCallbacks(selection, {
-        select: {
-            enter: [() => console.log("enter")],
-            selectItem_pre: [logSelect],
-            selectItem: [handleSelectItem],
-            selectItem_post: [highlightItemAfterSelect],
-            exit: [() => console.log("exit")],
-        }
-    })
-}
-```
-
-Notes:
-
-0. The handler function may take a `this` parameter that has the type of the class that contains the
-   host function. This allows callback function to inspect the state of the host class instance.
-
-1. The signature of the "selectItem" callbacks must match the signature of the `Selection.select` function,
-   otherwise Typescript will complain.
-1. The "enter" and "exit" handlers are optional. They are triggered when the host function is entered
-   and exited.
-
-1. If you forget to install a required callback then a runtime error will be generated when the host function
-   is executed.
-
-1. In this example, the array of handlers for handling the "selectItem" callback contains a single function:
-   `handleSelectItem`. If we specify multiple functions then all of them will be executed, and the return value of the last one will be returned to the host function.
-
-1. We also install a handler for "selectItem_pre". This handler will be called before "selectItem" is triggered.
-
-1. The handler for "selectItem*post*" will not be called **immediately** after "selectItem" is triggered. Instead,
-   it will be called before the **next** callback is triggered. In the above example that would be the "exit"
-   callback. The implication of this design is that the host function may do some more work after triggering
-   "selectItem" and the handler of "selectItem_post" will see the state of the host class that reflects this
-   extra work. Depending on the use-case, this may be a good or a bad thing. If "selectItem_post" must see the
-   state immediately after "selectItem" finishes then you can explicitly insert "selectItem_post" as a callback
-   in the host function.
-
-## Dealing with Promises
-
-The way that `exec` works is that the correct set of callbacks is retrieved before the host function is called, and
-used during that call. The invocation of `exec("foo")` can be interpreted as: look up and execute the "foo" callback
-for the set of callbacks that belongs to the current host function. This must be kept in mind when promises are used
-in the host function. At the time that the promise resolves, the "current set of callbacks" will be associated with
-a different host function, so we can no longer use it. Instead, we must locally cache the callbacks, as follows:
-
-```
-  @host select({ itemId, isShift, isCtrl }) {
-    // cache the set of callbacks for later used
-    const cb = getCallbacks();
-
-    if (!this.selectableIds.contains(itemId)) {
-      throw Error(`Invalid id: ${itemId}`);
+  @host select(selectionParams: SelectionParamsT) {
+    return (cbs: Selection_select) {
+      const { itemId, isShift, isCtrl } = selectionParams;
+      if (!this.selectableIds.contains(itemId)) {
+        throw Error(`Invalid id: ${itemId}`);
+      }
+      cbs.selectItem();
     }
-    cb.exec("selectItem").then(() => {
-      // WRONG would be: exec("doSomethingElse");
-      cb.exec("doSomethingElse");
-    });
   }
-```
-
-## Additional callback parameters
-
-As stated, each callback function is called with the arguments that are received by the host function. If the
-host function wants to pass in additional arguments it can do so by expecting the callback function to return
-a function that takes the additional parameters, like so:
-
-```
-  @host select({ itemId, isShift, isCtrl }) {
-    if (!this.selectableIds.contains(itemId)) {
-      throw Error(`Invalid id: ${itemId}`);
-    }
-    exec("selectItem")({ selectMultiple: true});
-  }
-```
-
-The `handleSelectItem` can be implemented as follows to support this:
-
-```
-function handleSelectItem(this: Selection, { itemId, isShift, isCtrl }) {
-    return (options: {selectMultiple: boolean}) => {
-        // do something with all of the above arguments
-    }
 }
+```
+
+At this point, the host function accepts callbacks, but we still have to implement them.
+This is done with the addCallbacks function, which installs the callbacks in the class instance that contains
+the host function(s). In the example below, notice first that the callback
+function has a `this` that is bound to the callbacks object, and second that the callbacks object
+contains the arguments that were passed into the host function (in this case: selectionParams).
+In addition to `selectItem` you may specify a `enter` and `exit` callback that are called at the start
+and the end of the host function.
+
+```
+const selection = new Selection();
+addCallbacks(
+  selection,
+  {
+    selectItem(this: Selection_select) {
+      console.log(`Make a selection using params {this.selectionParams}`)
+    },
+    enter(this: Selection_select) {},
+    exit(this: Selection_select) {},
+  }
+)
 ```
 
 ## Type safety
 
-The Aspiration approach is not very typesafe, but some type safety is offered. First of
-all the signature of the callback function must match the signature of the host function. Second, along with
-the host class, we can publish a type with the signatures of the callback functions:
-
-```
-export type SelectionParamsT = {
-  itemId: string;
-  isShift: boolean;
-  isCtrl: boolean;
-}
-
-export type SelectionOptionsT = {
-  selectMultiple: boolean;
-}
-
-export type SelectionCbT {
-  select: {
-    selectItem: (params: SelectionParamsT) => (options: SelectionOptions) => void;
-  }
-}
-```
-
-We can use `SelectionCbT` when we call `setCallbacks`:
-
-```
-function foo(selection: Selection) {
-    setCallbacks(selection, {
-        select: {
-            selectItem_pre: [logSelect],
-            selectItem: [handleSelectItem],
-            selectItem_post: [highlightItemAfterSelect],
-        }
-    } as SelectionCbT)  // Note: using SelectionCbT here
-}
-```
-
-This gives the client the guarantee that they are passing in callbacks with the right signatures. However, it only
-offers a limited type safety, since in the host function the call to `exec` remains unchecked. Also, the signatures
-of `selectItem_pre` and `selectItem_post` are unchecked, because they do not appear in `SelectionCbT`.
-Of course, other more type safe approaches are possible, but there is a trade-off: by sacrificing type safety somewhat,
-Aspiration can achieve its goals with less code. In the end this was more important to me.
+The Aspiration approach is not completely typesafe, because there is no check that the callbacks that are
+installed with `addCallbacks` match the expected callbacks. The `addCallbacks` function will complain if you
+forgot to specify a callback. Also, since a type (`Selection_select`) is used inside the host function and inside the
+callback functions, you will get errors if you use the callbacks object incorrectly.
+Another important thing to keep in mind is that Aspiration looks at the argument names in the host function. The arguments
+in the host function should have corresponding fields (with the same names) in the callbacks object, so that Aspiration
+can copy these values to the callbacks object.
