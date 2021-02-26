@@ -36,6 +36,8 @@ class Selection {
     if (!this.selectableIds.contains(itemId)) {
       throw Error(`Invalid id: ${itemId}`);
     }
+    // Do something to actually select an item.
+    // We wish to use a callback function for this.
   }
 }
 ```
@@ -68,6 +70,8 @@ class Selection {
 }
 ```
 
+## The addCallbacks function
+
 At this point, the host function accepts callbacks, but we still have to implement them.
 This is done with the `addCallbacks` function, which installs callbacks for every host function in the
 host class instance.
@@ -83,7 +87,7 @@ addCallbacks(
   {
     selectItem: {
       selectItem(this: Selection_select) {
-        console.log(`Make a selection using params {this.selectionParams}`)
+        console.log(`Make a selection using params ${this.selectionParams}`)
       },
       enter(this: Selection_select) {},
       exit(this: Selection_select) {},
@@ -95,9 +99,9 @@ addCallbacks(
 ## Type safety
 
 The Aspiration approach is not completely typesafe, because there is no check that the callbacks that are
-installed with `addCallbacks` match the expected callbacks. The `addCallbacks` function will complain if you
-forgot to specify a callback. Also, since a type (`Selection_select`) is used inside the host function and inside the
-callback functions, you will get errors if you use the callbacks object incorrectly.
+installed with `addCallbacks` match the expected callbacks. The `addCallbacks` function will however complain
+if you forgot to specify a callback. And on the plus side, since a type (`Selection_select`) is used inside the
+host function and inside the callback functions, you will get errors if you use the callbacks object incorrectly.
 Another important thing to keep in mind is that Aspiration looks at the argument names in the host function. The arguments
 in the host function should have corresponding fields (with the same names) in the callbacks object, so that Aspiration
 can copy these values to the callbacks object.
