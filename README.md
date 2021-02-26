@@ -14,8 +14,6 @@ As explained below, the key difference is that there is a single place in the co
 code is doing, there are only two places to look (the host function that absorps the callbacks, and the one
 place where the callbacks are specified).
 
-# Reference documentation
-
 ## The host decorator
 
 Assume that we have a function (let's call it the `host` function) that we wish to extend using AOP.
@@ -59,7 +57,7 @@ class Selection {
   // other members omitted
 
   @host select(selectionParams: SelectionParamsT) {
-    return (cbs: Selection_select) {
+    return (cbs: Selection_select) => {
       const { itemId, isShift, isCtrl } = selectionParams;
       if (!this.selectableIds.contains(itemId)) {
         throw Error(`Invalid id: ${itemId}`);
@@ -71,23 +69,25 @@ class Selection {
 ```
 
 At this point, the host function accepts callbacks, but we still have to implement them.
-This is done with the addCallbacks function, which installs the callbacks in the class instance that contains
-the host function(s). In the example below, notice first that the callback
-function has a `this` that is bound to the callbacks object, and second that the callbacks object
-contains the arguments that were passed into the host function (in this case: selectionParams).
-In addition to `selectItem` you may specify a `enter` and `exit` callback that are called at the start
-and the end of the host function.
+This is done with the `addCallbacks` function, which installs callbacks for every host function in the
+host class instance.
+In the example below, we install callbacks for `selectItem` in the `Selection` host class instance.
+Notice first that the callback has a `this` argument that is bound to the callbacks object, and second that the
+callbacks object contains the host function arguments (in this case: `selectionParams`). Finally, note that
+you may specify a `enter` and `exit` callback that are called at the start and the end of the host function.
 
 ```
 const selection = new Selection();
 addCallbacks(
   selection,
   {
-    selectItem(this: Selection_select) {
-      console.log(`Make a selection using params {this.selectionParams}`)
-    },
-    enter(this: Selection_select) {},
-    exit(this: Selection_select) {},
+    selectItem: {
+      selectItem(this: Selection_select) {
+        console.log(`Make a selection using params {this.selectionParams}`)
+      },
+      enter(this: Selection_select) {},
+      exit(this: Selection_select) {},
+    }
   }
 )
 ```
