@@ -25,7 +25,9 @@ export function host(operationHost, operationMember, descriptor) {
       }
       if (callbacks.enter) callbacks.enter();
       const paramsMemo = {};
-      const paramNames = getParamNames(f);
+
+      const paramNames = (f[symbols.paramNames] =
+        f[symbols.paramNames] ?? getParamNames(f));
 
       // Create memo of param values
       paramNames.forEach((paramName, idx) => {
