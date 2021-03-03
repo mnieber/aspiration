@@ -75,7 +75,7 @@ class Selection {
 At this point, the host function accepts callbacks, but we still have to implement them.
 This is done with the `addCallbacks` function, which installs callbacks for every host function in the
 host class instance.
-In the example below, we install callbacks for `selectItem` in the `Selection` host class instance.
+In the example below, we install callbacks for `select` in the `Selection` host class instance.
 Notice first that the callback has a `this` argument that is bound to the callbacks object, and second that the
 callbacks object contains the host function arguments (in this case: `selectionParams`). Finally, note that
 you may specify a `enter` and `exit` callback that are called at the start and the end of the host function.
@@ -85,7 +85,7 @@ const selection = new Selection();
 addCallbacks(
   selection,
   {
-    selectItem: {
+    select: {
       selectItem(this: Selection_select) {
         console.log(`Make a selection using params ${this.selectionParams}`)
       },
