@@ -59,13 +59,13 @@ class Selection {
   // other members omitted
 
   @host select(selectionParams: SelectionParamsT) {
-    return (cbs: Selection_select) => {
+    return action((cbs: Selection_select) => {
       const { itemId, isShift, isCtrl } = selectionParams;
       if (!this.selectableIds.contains(itemId)) {
         throw Error(`Invalid id: ${itemId}`);
       }
       cbs.selectItem();
-    }
+    });
   }
 }
 ```

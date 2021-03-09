@@ -17,31 +17,29 @@ export function host(operationHost, operationMember, descriptor) {
   if (typeof descriptor.value === "function") {
     descriptor.value = function (...args) {
       const callbacks = this[symbols.callbackMap][operationMember];
-      if (!callbacks) {
-        console.error(
-          `Missing callbacks for operations ${operationMember}` +
-            ` in host ${this}`
-        );
-      }
-      if (callbacks.enter) callbacks.enter();
       const paramsMemo = {};
 
       const paramNames = (f[symbols.paramNames] =
         f[symbols.paramNames] ?? getParamNames(f));
 
       // Create memo of param values
-      paramNames.forEach((paramName, idx) => {
-        paramsMemo[paramName] = callbacks[paramName];
-        callbacks[paramName] = args[idx];
-      });
+      if (callbacks) {
+        paramNames.forEach((paramName, idx) => {
+          paramsMemo[paramName] = callbacks[paramName];
+          callbacks[paramName] = args[idx];
+        });
+      }
 
+      if (callbacks && callbacks.enter) callbacks.enter();
       const returnValue = f.bind(this)(...args)(callbacks);
-      if (callbacks.exit) callbacks.exit();
+      if (callbacks && callbacks.exit) callbacks.exit();
 
       // Restore memo of param values
-      paramNames.forEach((paramName, idx) => {
-        callbacks[paramName] = paramsMemo[paramName];
-      });
+      if (callbacks) {
+        paramNames.forEach((paramName, idx) => {
+          callbacks[paramName] = paramsMemo[paramName];
+        });
+      }
       return returnValue;
     };
   }
