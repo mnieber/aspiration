@@ -16,7 +16,8 @@ export function host(operationHost, operationMember, descriptor) {
 
   if (typeof descriptor.value === "function") {
     descriptor.value = function (...args) {
-      const callbacks = this[symbols.callbackMap][operationMember];
+      const s = symbols.callbackMap;
+      const callbacks = this[s]?.[operationMember];
       const paramsMemo = {};
 
       const paramNames = (f[symbols.paramNames] =
