@@ -1,4 +1,4 @@
-import { symbols } from "./internal/symbols";
+import { getAdmin } from "./internal/utils";
 
 var STRIP_COMMENTS = /(\/\/.*$)|(\/\*[\s\S]*?\*\/)|(\s*=[^,\)]*(('(?:\\'|[^'\r\n])*')|("(?:\\"|[^"\r\n])*"))|(\s*=[^,\)]*))/gm;
 var ARGUMENT_NAMES = /([^\s,]+)/g;
@@ -16,12 +16,12 @@ export function host(operationHost, operationMember, descriptor) {
 
   if (typeof descriptor.value === "function") {
     descriptor.value = function (...args) {
-      const s = symbols.callbackMap;
-      const callbacks = this[s]?.[operationMember];
+      const admin = getAdmin(this);
+      const callbacks = admin.callbackMap?.[operationMember];
       const paramsMemo = {};
 
-      const paramNames = (f[symbols.paramNames] =
-        f[symbols.paramNames] ?? getParamNames(f));
+      const paramNames = (admin.paramNames =
+        admin.paramNames ?? getParamNames(f));
 
       // Create memo of param values
       if (callbacks) {
@@ -47,8 +47,8 @@ export function host(operationHost, operationMember, descriptor) {
   return descriptor;
 }
 
-export const setCallbacks = (facet: any, cbs: any) => {
-  facet[symbols.callbackMap] = cbs;
+export const setCallbacks = (host: any, cbs: any) => {
+  getAdmin(host).callbackMap = cbs;
 };
 
 export const stub = () => undefined as any;

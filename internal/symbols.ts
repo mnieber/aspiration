@@ -1,4 +1,3 @@
 export const symbols = {
-  callbackMap: Symbol("aspirationCallbackMap"),
-  paramNames: Symbol("aspirationParamNames"),
+  admin: Symbol("aspiration administration"),
 };
