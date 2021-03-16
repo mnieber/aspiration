@@ -11,29 +11,28 @@ function getParamNames(func) {
   return result;
 }
 
-export function host(operationHost, operationMember, descriptor) {
+function _host(operationHost, operationMember, descriptor, createDefaultCbs) {
   const f = descriptor.value;
 
   if (typeof descriptor.value === "function") {
     descriptor.value = function (...args) {
       const admin = getAdmin(this);
-      const callbacks = admin.callbackMap?.[operationMember];
+      const callbacks =
+        admin.callbackMap?.[operationMember] ?? createDefaultCbs(this);
       const paramsMemo = {};
 
       const paramNames = (admin.paramNames =
         admin.paramNames ?? getParamNames(f));
 
       // Create memo of param values
-      if (callbacks) {
-        paramNames.forEach((paramName, idx) => {
-          paramsMemo[paramName] = callbacks[paramName];
-          callbacks[paramName] = args[idx];
-        });
-      }
+      paramNames.forEach((paramName, idx) => {
+        paramsMemo[paramName] = callbacks[paramName];
+        callbacks[paramName] = args[idx];
+      });
 
-      if (callbacks && callbacks.enter) callbacks.enter();
+      if (callbacks.enter) callbacks.enter();
       const returnValue = f.bind(this)(...args)(callbacks);
-      if (callbacks && callbacks.exit) callbacks.exit();
+      if (callbacks.exit) callbacks.exit();
 
       // Restore memo of param values
       if (callbacks) {
@@ -45,6 +44,18 @@ export function host(operationHost, operationMember, descriptor) {
     };
   }
   return descriptor;
+}
+
+export function host(...args) {
+  if (args.length === 1) {
+    const wrapped = (operationHost, operationMember, descriptor) => {
+      return _host(operationHost, operationMember, descriptor, args[0]);
+    };
+    return wrapped;
+  }
+
+  const [operationHost, operationMember, descriptor] = args;
+  return _host(operationHost, operationMember, descriptor, () => ({}));
 }
 
 export const setCallbacks = (host: any, cbs: any) => {
