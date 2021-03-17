@@ -28,13 +28,12 @@ export type SelectionParamsT = {
 };
 
 class Selection {
-  @observable selectableIds?: Array<string>;
-  // other members omitted
+  selectableIds?: Array<string>;
+  ids: Array<string> = [];
 
   select(selectionParams: SelectionParamsT) {
-    const { itemId, isShift, isCtrl } = selectionParams;
-    if (!this.selectableIds.contains(itemId)) {
-      throw Error(`Invalid id: ${itemId}`);
+    if (!this.selectableIds.contains(selectionParams.itemId)) {
+      throw Error(`Invalid id: ${selectionParams.itemId}`);
     }
     // Do something to actually select an item.
     // We wish to use a callback function for this.
@@ -46,23 +45,26 @@ Next we do three things:
 
 - define a class that contains the callback functions
 - use the `@host` decorator to indicate that we want our function to take callbacks
-- change the host function to accept the set of callbacks
+- update the host function to accept the set of callbacks
 
 ```
-class Selection_select {
+class Selection_select extends Cbs {
   selectionParams: SelectionParamsT;
   selectItem() {}
 }
 
+type SelectionCbs {
+  select: Selection_select;
+}
+
 class Selection {
-  @observable selectableIds?: Array<string>;
-  // other members omitted
+  selectableIds?: Array<string>;
+  ids: Array<string> = [];
 
   @host select(selectionParams: SelectionParamsT) {
     return action((cbs: Selection_select) => {
-      const { itemId, isShift, isCtrl } = selectionParams;
-      if (!this.selectableIds.contains(itemId)) {
-        throw Error(`Invalid id: ${itemId}`);
+      if (!this.selectableIds.contains(selectionParams.itemId)) {
+        throw Error(`Invalid id: ${selectionParams.itemId}`);
       }
       cbs.selectItem();
     });
@@ -70,38 +72,81 @@ class Selection {
 }
 ```
 
-## The addCallbacks function
+## The setCallbacks function
 
 At this point, the host function accepts callbacks, but we still have to implement them.
-This is done with the `addCallbacks` function, which installs callbacks for every host function in the
+This is done with the `setCallbacks` function, which installs callbacks for every host function in the
 host class instance.
 In the example below, we install callbacks for `select` in the `Selection` host class instance.
 Notice first that the callback has a `this` argument that is bound to the callbacks object, and second that the
-callbacks object contains the host function arguments (in this case: `selectionParams`). Finally, note that
-you may specify a `enter` and `exit` callback that are called at the start and the end of the host function.
+callbacks object contains the host function arguments (in this case: `selectionParams`).
+Finally, note that you may specify a `enter` and `exit` callback that are called at the start and the end of
+the host function. These special callbacks, that every callbacks object must have, are defined in the `Cbs` utility class. For this reason, `Selection_select` extends `Cbs`, though instead you could also add `enter` and `exit` directly to `Selection_select`.
 
 ```
 const selection = new Selection();
-addCallbacks(
+setCallbacks(
   selection,
   {
     select: {
-      selectItem(this: Selection_select) {
+      selectItem(this: SelectionCbs['select']) {
         console.log(`Make a selection using params ${this.selectionParams}`)
       },
-      enter(this: Selection_select) {},
-      exit(this: Selection_select) {},
+      enter() {}, // do something when select() is entered
+      exit() {}, // do something when select() is exited
     }
-  }
+  } as SelectionCbs
 )
 ```
 
 ## Type safety
 
-The Aspiration approach is not completely typesafe, because there is no check that the callbacks that are
-installed with `addCallbacks` match the expected callbacks. The `addCallbacks` function will however complain
-if you forgot to specify a callback. And on the plus side, since a type (`Selection_select`) is used inside the
-host function and inside the callback functions, you will get errors if you use the callbacks object incorrectly.
-Another important thing to keep in mind is that Aspiration looks at the argument names in the host function. The arguments
-in the host function should have corresponding fields (with the same names) in the callbacks object, so that Aspiration
-can copy these values to the callbacks object.
+In the code example above you can see that the second argument to `setCallbacks` is cast using `as SelectionCbs`.
+By doing this, you force Typescript to check the types of the callbacks.
+The explicit `this` argument in the `selectItem` function is not strictly necessary, but it helps the reader
+of the code who will otherwise be surprised that `this` refers to the callback object and not to the
+`selection` object.
+
+## Default callbacks
+
+The current version of the `Selection` class does not work out of the box, because the caller needs to
+implement the `select` callback. To fix this you can specify a default set of callbacks in the
+`@host` decorator:
+
+```
+// class Selection_select is the same as before
+
+const selectItemDefaultCbs = (selection: Selection) => ({
+  selectItem: function (this: Selection_selectItem) {
+    handleSelectItem(selection, this.selectionParams);
+  },
+});
+
+class Selection {
+  selectableIds?: Array<string>;
+  ids: Array<string> = [];
+
+  @host(selectItemDefaultCbs) select(selectionParams: SelectionParamsT) {
+    return action((cbs: Selection_select) => {
+      if (!this.selectableIds.contains(selectionParams.itemId)) {
+        throw Error(`Invalid id: ${selectionParams.itemId}`);
+      }
+      cbs.selectItem();
+    });
+  }
+}
+```
+
+In this case the `selection` instance will work even though we did not call `setCallbacks`. When
+`selection.select()` is called, Aspiration will create the callbacks on the fly by calling
+`selectItemDefaultCbs(selection)`. Note that either Aspiration will either use the callbacks that were
+installed with `setCallbacks` or the default ones, it does not ever try to merge them.
+
+## Conclusion
+
+Aspiration offers a light-weight and effective approach for extending functions with callbacks. It's used in much the
+same way as other functions that take callbacks, but there are some differences. First of all, the callbacks are installed
+in a single place, before the host functions are called. To predict the results of the host function, it's sufficient
+to inspect this single location. Secondly, each callback function automatically gets access to the arguments of the host
+function, which tends to reduce clutter in the code. This combination of features makes it possible to do Aspect Oriented
+Programming in an agile and predictable manner.

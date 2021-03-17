@@ -58,8 +58,12 @@ export function host(...args) {
   return _host(operationHost, operationMember, descriptor, () => ({}));
 }
 
-export const setCallbacks = (host: any, cbs: any) => {
+export function setCallbacks(host: any, cbs: any) {
   getAdmin(host).callbackMap = cbs;
-};
+}
 
 export const stub = () => undefined as any;
+
+export const nop = (...args: any[]) => undefined as any;
+
+export const maybe = (x: Function) => x ?? nop;
