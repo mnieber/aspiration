@@ -49,7 +49,7 @@ Next we do three things:
 
 ```
 class Selection_select extends Cbs {
-  selectionParams: SelectionParamsT;
+  selectionParams: SelectionParamsT = stub();
   selectItem() {}
 }
 
@@ -71,6 +71,12 @@ class Selection {
   }
 }
 ```
+
+Notes:
+
+- The stub() function is a utility that returns `undefined` cast to `any`. It is used to prevent the
+  Typescript checker from complaining about uninitialized callback object members (these members receive
+  their value when the host function is called).
 
 ## The setCallbacks function
 
@@ -141,6 +147,12 @@ In this case the `selection` instance will work even though we did not call `set
 `selection.select()` is called, Aspiration will create the callbacks on the fly by calling
 `selectItemDefaultCbs(selection)`. Note that either Aspiration will either use the callbacks that were
 installed with `setCallbacks` or the default ones, it does not ever try to merge them.
+
+## The maybe function
+
+In some cases a callback function is optional. In that case you wrap the call with `maybe`,
+for example: `maybe(cbs.printWarnings)();`. This is a shorthand for writing
+`if (cbs.printWarnings) cbs.printWarnings();`.
 
 ## Conclusion
 
