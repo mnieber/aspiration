@@ -29,8 +29,9 @@ function _host(target, propertyName, descriptor, createDefaultCbs) {
         admin.defaultCallbackMap?.[propertyName] ??
         _setDefaultCallbacks(admin, propertyName, createDefaultCbs(this));
 
-      const paramNames = (admin.paramNames =
-        admin.paramNames ?? getParamNames(f));
+      if (!admin.paramNamesMap) admin.paramNamesMap = {};
+      const paramNames = (admin.paramNamesMap[propertyName] =
+        admin.paramNamesMap[propertyName] ?? getParamNames(f));
 
       // Create memo of param values
       const paramsMemo = {};
