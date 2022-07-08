@@ -1,15 +1,4 @@
-import { getAdmin } from "./internal/utils";
-
-var STRIP_COMMENTS = /(\/\/.*$)|(\/\*[\s\S]*?\*\/)|(\s*=[^,\)]*(('(?:\\'|[^'\r\n])*')|("(?:\\"|[^"\r\n])*"))|(\s*=[^,\)]*))/gm;
-var ARGUMENT_NAMES = /([^\s,]+)/g;
-function getParamNames(func) {
-  var fnStr = func.toString().replace(STRIP_COMMENTS, "");
-  var result = fnStr
-    .slice(fnStr.indexOf("(") + 1, fnStr.indexOf(")"))
-    .match(ARGUMENT_NAMES);
-  if (result === null) result = [];
-  return result;
-}
+import { getAdmin } from './internal/utils';
 
 function _setDefaultCallbacks(hostObjectAdmin, propertyName, defaultCbs) {
   hostObjectAdmin.defaultCallbackMap = hostObjectAdmin.defaultCallbackMap ?? {};
@@ -17,38 +6,29 @@ function _setDefaultCallbacks(hostObjectAdmin, propertyName, defaultCbs) {
   return defaultCbs;
 }
 
-function _host(target, propertyName, descriptor, createDefaultCbs) {
+function _host(target, propertyName, descriptor, paramNames, createDefaultCbs) {
   const f = descriptor.value;
 
-  if (typeof descriptor.value === "function") {
-    descriptor.value = function (...args) {
-      const admin = getAdmin(this);
+  if (typeof descriptor.value === 'function') {
+    descriptor.value = function () {
+      const executionContext = _prepareExecutionContext(
+        this,
+        propertyName,
+        createDefaultCbs,
+        f,
+        arguments,
+        paramNames
+      );
 
-      const callbacks =
-        admin.callbackMap?.[propertyName] ??
-        admin.defaultCallbackMap?.[propertyName] ??
-        _setDefaultCallbacks(admin, propertyName, createDefaultCbs(this));
-
-      if (!admin.paramNamesMap) admin.paramNamesMap = {};
-      const paramNames = (admin.paramNamesMap[propertyName] =
-        admin.paramNamesMap[propertyName] ?? getParamNames(f));
-
-      // Create memo of param values
-      const paramsMemo = {};
-      for (var idx = 0, n = paramNames.length; idx < n; ++idx) {
-        const paramName = paramNames[idx];
-        paramsMemo[paramName] = callbacks[paramName];
-        callbacks[paramName] = args[idx];
-      }
-
-      if (callbacks.enter) callbacks.enter();
-      const returnValue = f.bind(this)(...args)(callbacks);
-      if (callbacks.exit) callbacks.exit();
+      if (executionContext.callbacks.enter) executionContext.callbacks.enter();
+      const returnValue = executionContext.boundf(executionContext.callbacks);
+      if (executionContext.callbacks.exit) executionContext.callbacks.exit();
 
       // Restore memo of param values
       for (var idx = 0, n = paramNames.length; idx < n; ++idx) {
         const paramName = paramNames[idx];
-        callbacks[paramName] = paramsMemo[paramName];
+        executionContext.callbacks[paramName] =
+          executionContext.paramsMemo[paramName];
       }
 
       return returnValue;
@@ -57,16 +37,52 @@ function _host(target, propertyName, descriptor, createDefaultCbs) {
   return descriptor;
 }
 
+function _prepareExecutionContext(
+  self: any,
+  propertyName: any,
+  createDefaultCbs: any,
+  f: any,
+  argsArray: any,
+  paramNames: string[]
+) {
+  var args: any[] = [];
+  for (var _i = 0; _i < argsArray.length; _i++) {
+    args[_i] = argsArray[_i];
+  }
+  const admin = getAdmin(self);
+
+  const callbacks =
+    admin.callbackMap?.[propertyName] ??
+    admin.defaultCallbackMap?.[propertyName] ??
+    _setDefaultCallbacks(admin, propertyName, createDefaultCbs(self));
+
+  // Create memo of param values
+  const paramsMemo = {};
+  for (var idx = 0, n = paramNames.length; idx < n; ++idx) {
+    const paramName = paramNames[idx];
+    paramsMemo[paramName] = callbacks[paramName];
+    callbacks[paramName] = args[idx];
+  }
+  return { callbacks, paramsMemo, boundf: f.bind(self)(...args) };
+}
+
 export function host(...args) {
+  if (args.length === 2) {
+    const wrapped = (target, propertyName, descriptor) => {
+      return _host(target, propertyName, descriptor, args[0], args[1]);
+    };
+    return wrapped;
+  }
+
   if (args.length === 1) {
     const wrapped = (target, propertyName, descriptor) => {
-      return _host(target, propertyName, descriptor, args[0]);
+      return _host(target, propertyName, descriptor, args[0], () => ({}));
     };
     return wrapped;
   }
 
   const [target, propertyName, descriptor] = args;
-  return _host(target, propertyName, descriptor, () => ({}));
+  return _host(target, propertyName, descriptor, [], () => ({}));
 }
 
 export function setCallbacks(host: any, cbs: any) {

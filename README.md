@@ -12,7 +12,7 @@ AOP that is easier to reason about and nonetheless offers some of the same advan
 As explained below, the key difference is that there is a single place in the code where callbacks
 (known as "advise" in AspectJ terminology) are woven into the code. Therefore, to know what the
 code is doing, there are only two places to look (the host function that triggers the callbacks, and the one
-place where the callbacks are specified).
+place where the callbacks are installed).
 
 ## The host decorator
 
@@ -44,8 +44,8 @@ class Selection {
 Next we do three things:
 
 - define a class that contains the callback functions
-- use the `@host` decorator to indicate that we want our function to take callbacks
-- update the host function to accept the set of callbacks
+- use the `@host` decorator to indicate that we want our function to take callbacks.
+- update the host function to accept the set of callbacks.
 
 ```
 class Selection_selectItem extends Cbs {
@@ -61,7 +61,8 @@ class Selection {
   selectableIds?: Array<string>;
   ids: Array<string> = [];
 
-  @host selectItem(selectionParams: SelectionParamsT) {
+  @host(['selectionParams'])
+  selectItem(selectionParams: SelectionParamsT) {
     return action((cbs: Selection_selectItem) => {
       if (!this.selectableIds.contains(selectionParams.itemId)) {
         throw Error(`Invalid id: ${selectionParams.itemId}`);
@@ -74,8 +75,10 @@ class Selection {
 
 Notes:
 
+- The host() decorator takes (as its argument) the list of function argument names. It does this so that it can copy all function arguments to fields of the callbacks-object (`cbs`). In the future, when typescript makes it possible to use introspection to detect the argument names, the host() decorator will not require this argument anymore.
+
 - The stub() function is a utility that returns `undefined` cast to `any`. It is used to prevent the
-  Typescript checker from complaining about uninitialized callback object members (these members receive
+  Typescript checker from complaining about uninitialized callbacks-object members (these members receive
   their value when the host function is called).
 
 ## The setCallbacks function
@@ -103,14 +106,11 @@ setCallbacks(
 Notes:
 
 - we installed callbacks for `selectItem` in the `Selection` host class instance.
-- each callback function has a `this` argument that is bound to the callbacks object
-- each callback function receives the host function arguments (in this case: `selectionParams`)
+- each callback function has a `this` argument that is bound to the callbacks-object. This callbacks-object contains the host function arguments (in this case: `selectionParams`) as field values.
 - you may specify a `enter` and `exit` callback that are called at the start and the end of
-  the host function (i.e. `selectItem`).
-- if you inspect the `Selection_selectItem` callbacks object then you will see that it extends the `Cbs` baseclass
-  that contains `enter` and `exit`.
+  the host function (i.e. `selectItem`). If you inspect the `Selection_selectItem` callbacks-object then you will see that it extends the `Cbs` baseclass that contains `enter` and `exit`.
 - The explicit `this` argument in the `select` function is not strictly necessary, but it helps the reader
-  of the code who will otherwise be surprised that `this` refers to the callback object and not to the
+  of the code who will otherwise be surprised that `this` refers to the callbacks-object and not to the
   `Selection` instance.
 
 ## Type safety
@@ -137,9 +137,10 @@ class Selection {
   selectableIds?: Array<string>;
   ids: Array<string> = [];
 
-  // note that '@host' now takes an argument
+  // note that '@host' now takes an extra argument
 
-  @host(selectItemDefaultCbs) selectItem(selectionParams: SelectionParamsT) {
+  @host(['selectionParams'], selectItemDefaultCbs)
+  selectItem(selectionParams: SelectionParamsT) {
     return action((cbs: Selection_select) => {
       if (!this.selectableIds.contains(selectionParams.itemId)) {
         throw Error(`Invalid id: ${selectionParams.itemId}`);
