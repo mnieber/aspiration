@@ -11,8 +11,12 @@ oriented programming arose in my own code bases, I tried to come up with a more 
 AOP that is easier to reason about and nonetheless offers some of the same advantages as full-blown AOP.
 As explained below, the key difference is that there is a single place in the code where callbacks
 (known as "advise" in AspectJ terminology) are woven into the code. Therefore, to know what the
-code is doing, there are only two places to look (the host function that triggers the callbacks, and the one
-place where the callbacks are installed).
+code is doing, there are only two places to look: the host function that triggers the callbacks, and the one
+place where the callbacks are installed.
+
+## A quick note on debugging
+
+With Aspiration you can decorate your functions so that they can receive a callbacks object. To avoid stepping into the decorator function, add `/aspiration/` to the ignore list of your debugger.
 
 ## The host decorator
 
@@ -154,12 +158,6 @@ class Selection {
 In this case the `selection` instance will work even though we did not call `setCallbacks`.
 Note that either Aspiration will either use the callbacks that were installed with `setCallbacks`
 or the default ones, it does not ever try to merge them.
-
-## The maybe function
-
-In some cases a callback function is optional. In that case you wrap the call with `maybe`,
-for example: `maybe(cbs.printWarnings).bind(cbs)();`. This is an alternative way of writing
-`if (cbs.printWarnings) cbs.printWarnings();`.
 
 ## Conclusion
 

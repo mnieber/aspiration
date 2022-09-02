@@ -11,59 +11,42 @@ function _host(target, propertyName, descriptor, paramNames, createDefaultCbs) {
 
   if (typeof descriptor.value === 'function') {
     descriptor.value = function () {
-      const executionContext = _prepareExecutionContext(
-        this,
-        propertyName,
-        createDefaultCbs,
-        f,
-        arguments,
-        paramNames
-      );
+      var args: any[] = [];
+      for (var _i = 0; _i < arguments.length; _i++) {
+        args[_i] = arguments[_i];
+      }
 
-      if (executionContext.callbacks.enter) executionContext.callbacks.enter();
-      const returnValue = executionContext.boundf(executionContext.callbacks);
-      if (executionContext.callbacks.exit) executionContext.callbacks.exit();
+      // Get or create callbacks object
+      const admin = getAdmin(this);
+      const callbacks =
+        admin.callbackMap?.[propertyName] ??
+        admin.defaultCallbackMap?.[propertyName] ??
+        _setDefaultCallbacks(admin, propertyName, createDefaultCbs(this));
+
+      // Replace the arguments in the callbacks object with the current
+      // arguments. Keep a memo of the previous arguments.
+      const paramsMemo = {};
+      for (var idx = 0, n = paramNames.length; idx < n; ++idx) {
+        const paramName = paramNames[idx];
+        paramsMemo[paramName] = callbacks[paramName];
+        callbacks[paramName] = args[idx];
+      }
+
+      // Execute the function (passing in the callbacks)
+      if (callbacks.enter) callbacks.enter();
+      const returnValue = f.bind(this)(...args)(callbacks);
+      if (callbacks.exit) callbacks.exit();
 
       // Restore memo of param values
       for (var idx = 0, n = paramNames.length; idx < n; ++idx) {
         const paramName = paramNames[idx];
-        executionContext.callbacks[paramName] =
-          executionContext.paramsMemo[paramName];
+        callbacks[paramName] = paramsMemo[paramName];
       }
 
       return returnValue;
     };
   }
   return descriptor;
-}
-
-function _prepareExecutionContext(
-  self: any,
-  propertyName: any,
-  createDefaultCbs: any,
-  f: any,
-  argsArray: any,
-  paramNames: string[]
-) {
-  var args: any[] = [];
-  for (var _i = 0; _i < argsArray.length; _i++) {
-    args[_i] = argsArray[_i];
-  }
-  const admin = getAdmin(self);
-
-  const callbacks =
-    admin.callbackMap?.[propertyName] ??
-    admin.defaultCallbackMap?.[propertyName] ??
-    _setDefaultCallbacks(admin, propertyName, createDefaultCbs(self));
-
-  // Create memo of param values
-  const paramsMemo = {};
-  for (var idx = 0, n = paramNames.length; idx < n; ++idx) {
-    const paramName = paramNames[idx];
-    paramsMemo[paramName] = callbacks[paramName];
-    callbacks[paramName] = args[idx];
-  }
-  return { callbacks, paramsMemo, boundf: f.bind(self)(...args) };
 }
 
 export function host(...args) {
@@ -97,7 +80,3 @@ export class Cbs {
 }
 
 export const stub = () => undefined as any;
-
-export const nop = (...args: any[]) => undefined as any;
-
-export const maybe = (x: Function) => x ?? nop;
