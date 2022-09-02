@@ -10,12 +10,7 @@ function _host(target, propertyName, descriptor, paramNames, createDefaultCbs) {
   const f = descriptor.value;
 
   if (typeof descriptor.value === 'function') {
-    descriptor.value = function () {
-      var args: any[] = [];
-      for (var _i = 0; _i < arguments.length; _i++) {
-        args[_i] = arguments[_i];
-      }
-
+    descriptor.value = function (...args) {
       // Get or create callbacks object
       const admin = getAdmin(this);
       const callbacks =
