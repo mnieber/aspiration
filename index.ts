@@ -1,5 +1,7 @@
 import { getAdmin } from './internal/utils';
 
+const callbacksSymbol = Symbol('aspiration cbs');
+
 function _setDefaultCallbacks(hostObjectAdmin, propertyName, defaultCbs) {
   hostObjectAdmin.defaultCallbackMap = hostObjectAdmin.defaultCallbackMap ?? {};
   hostObjectAdmin.defaultCallbackMap[propertyName] = defaultCbs;
@@ -27,12 +29,16 @@ function _host(target, propertyName, descriptor, paramNames, createDefaultCbs) {
         callbacks[paramName] = args[idx];
       }
 
+      const cbsMemo = this[callbacksSymbol];
+      this[callbacksSymbol] = callbacks;
+
       // Execute the function (passing in the callbacks)
       if (callbacks.enter) callbacks.enter();
-      const returnValue = f.bind(this)(...args)(callbacks);
+      const returnValue = f.bind(this)(...args);
       if (callbacks.exit) callbacks.exit();
 
       // Restore memo of param values
+      this[callbacksSymbol] = cbsMemo;
       for (var idx = 0, n = paramNames.length; idx < n; ++idx) {
         const paramName = paramNames[idx];
         callbacks[paramName] = paramsMemo[paramName];
@@ -63,10 +69,16 @@ export function host(...args) {
   return _host(target, propertyName, descriptor, [], () => ({}));
 }
 
-export function setCallbacks(host: any, cbs: any) {
+// This function sets all callbacks for all functions in `host`.
+export function setCallbackMap(host: any, callbackMap: any) {
   const admin = getAdmin(host);
-  admin.callbackMap = cbs;
+  admin.callbackMap = callbackMap;
   admin.defaultCallbackMap = admin.defaultCallbackMap ?? {};
+}
+
+// This function gets the callbacks for the currently executing function in `host`.
+export function getCallbacks<T>(host) {
+  return host[callbacksSymbol] as unknown as T;
 }
 
 export class Cbs {
@@ -74,4 +86,4 @@ export class Cbs {
   exit() {}
 }
 
-export const stub = () => undefined as any;
+export const stub = undefined as any;
