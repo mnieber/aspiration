@@ -9,10 +9,11 @@ Aspect Oriented Programming (AOP) has proven to be an effective way keep cross-c
 criticism for making code less transparent about what it is actually doing. Since the need for aspect
 oriented programming arose in my own code bases, I tried to come up with a more restricted type of
 AOP that is easier to reason about and nonetheless offers some of the same advantages as full-blown AOP.
-As explained below, the key difference is that there is a single place in the code where callbacks
-(known as "advise" in AspectJ terminology) are woven into the code. Therefore, to know what the
-code is doing, there are only two places to look: the host function that triggers the callbacks, and the one
-place where the callbacks are installed.
+The main idea is that instead of extending a function F with pointcuts (as we do in AOP), we can extend
+it with callback functions. We then implement these callback functions in a single place. When a client
+calls F, then the callbacks are executed (so that things such as logging and validation are performed).
+In order to understand what F really does, we only need to look at F's body, and at the single place
+where F's callbacks are implemented.
 
 ## A quick note on debugging
 
@@ -36,11 +37,7 @@ class Selection {
   ids: Array<string> = [];
 
   selectItem(selectionParams: SelectionParamsT) {
-    if (!this.selectableIds.contains(selectionParams.itemId)) {
-      throw Error(`Invalid id: ${selectionParams.itemId}`);
-    }
-    // Do something to actually select an item.
-    // We wish to use a callback function for this.
+    this.ids = handleSelectItem(this.selectableIds, this.selectionParams);
   }
 }
 ```
@@ -49,12 +46,12 @@ Next we do three things:
 
 - define a class that contains the callback functions
 - use the `@host` decorator to indicate that we want our function to take callbacks.
-- update the host function to accept the set of callbacks.
+- update the host function to use the set of callbacks.
 
 ```
 class Selection_selectItem extends Cbs {
   selectionParams: SelectionParamsT = stub();
-  select() {}
+  validate() {}
 }
 
 type SelectionCbs {
@@ -67,12 +64,9 @@ class Selection {
 
   @host(['selectionParams'])
   selectItem(selectionParams: SelectionParamsT) {
-    return action((cbs: Selection_selectItem) => {
-      if (!this.selectableIds.contains(selectionParams.itemId)) {
-        throw Error(`Invalid id: ${selectionParams.itemId}`);
-      }
-      cbs.select();
-    });
+    const cbs = getCallbacks<Selection_selectItem>(this);
+    cbs.validate();
+    this.ids = handleSelectItem(this.selectableIds, this.selectionParams);
   }
 }
 ```
@@ -85,20 +79,22 @@ Notes:
   Typescript checker from complaining about uninitialized callbacks-object members (these members receive
   their value when the host function is called).
 
-## The setCallbacks function
+## The setCallbackMap function
 
-At this point, the host function accepts callbacks, but we still have to implement them.
-This is done with the `setCallbacks` function, which installs callbacks for every host function in the
+At this point, the host function uses callbacks, but we still have to define them.
+This is done with the `setCallbackMap` function, which installs callbacks for every host function in the
 host class instance.
 
 ```
 const selection = new Selection();
-setCallbacks(
+setCallbackMap(
   selection,
   {
     selectItem: {
-      select(this: SelectionCbs['selectItem']) {
-        console.log(`Make a selection using params ${this.selectionParams}`)
+      validate(this: SelectionCbs['selectItem'], selectableIds: string[]) {
+        if (!selectableIds.contains(this.selectionParams.itemId)) {
+          throw Error(`Invalid id: ${this.selectionParams.itemId}`);
+        }
       },
       enter() {}, // do something when selectItem() is entered
       exit() {}, // do something when selectItem() is exited
@@ -113,27 +109,29 @@ Notes:
 - each callback function has a `this` argument that is bound to the callbacks-object. This callbacks-object contains the host function arguments (in this case: `selectionParams`) as field values.
 - you may specify a `enter` and `exit` callback that are called at the start and the end of
   the host function (i.e. `selectItem`). If you inspect the `Selection_selectItem` callbacks-object then you will see that it extends the `Cbs` baseclass that contains `enter` and `exit`.
-- The explicit `this` argument in the `select` function is not strictly necessary, but it helps the reader
+- The explicit `this` argument in the `validate` function is not strictly necessary, but it helps the reader
   of the code who will otherwise be surprised that `this` refers to the callbacks-object and not to the
   `Selection` instance.
 
 ## Type safety
 
-In the code example above you can see that the second argument to `setCallbacks` is cast using `as SelectionCbs`.
+In the code example above you can see that the second argument to `setCallbackMap` is cast using `as SelectionCbs`.
 By doing this, you force Typescript to check the types of the callbacks.
 
 ## Default callbacks
 
 The current version of the `Selection` class does not work out of the box, because the caller needs to
-implement the `select` callback using `setCallbacks`. To fix this you can specify a default set of callbacks when
+implement the `validate` callback using `setCallbackMap`. To fix this you can specify a default set of callbacks when
 you add the `@host` decorator:
 
 ```
 // class Selection_select is the same as before
 
 const selectItemDefaultCbs = (selection: Selection) => ({
-  select: function (this: Selection_selectItem) {
-    handleSelectItem(selection, this.selectionParams);
+  validate(this: SelectionCbs['selectItem'], selectableIds: string[]) {
+    if (!selectableIds.contains(this.selectionParams.itemId)) {
+      throw Error(`Invalid id: ${this.selectionParams.itemId}`);
+    }
   },
 });
 
@@ -145,18 +143,15 @@ class Selection {
 
   @host(['selectionParams'], selectItemDefaultCbs)
   selectItem(selectionParams: SelectionParamsT) {
-    return action((cbs: Selection_select) => {
-      if (!this.selectableIds.contains(selectionParams.itemId)) {
-        throw Error(`Invalid id: ${selectionParams.itemId}`);
-      }
-      cbs.select();
-    });
+    const cbs = getCallbacks<Selection_selectItem>(this);
+    cbs.validate();
+    this.ids = handleSelectItem(this.selectableIds, this.selectionParams);
   }
 }
 ```
 
-In this case the `selection` instance will work even though we did not call `setCallbacks`.
-Note that either Aspiration will either use the callbacks that were installed with `setCallbacks`
+In this case the `selection` instance will work even though we did not call `setCallbackMap`.
+Note that either Aspiration will either use the callbacks that were installed with `setCallbackMap`
 or the default ones, it does not ever try to merge them.
 
 ## Conclusion
