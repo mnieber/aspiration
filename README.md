@@ -25,7 +25,7 @@ Assume that we have a function (let's call it the `host` function) that we wish 
 In the example below, the host function is `Selection.selectItem`. Currently, it does not yet take any
 callbacks:
 
-```
+```typescript
 export type SelectionParamsT = {
   itemId: any;
   isShift?: boolean;
@@ -48,7 +48,7 @@ Next we do three things:
 - use the `@host` decorator to indicate that we want our function to take callbacks.
 - update the host function to use the set of callbacks.
 
-```
+```typescript
 class Selection_selectItem extends Cbs {
   selectionParams: SelectionParamsT = stub();
   validate() {}
@@ -85,22 +85,19 @@ At this point, the host function uses callbacks, but we still have to define the
 This is done with the `setCallbackMap` function, which installs callbacks for every host function in the
 host class instance.
 
-```
+```typescript
 const selection = new Selection();
-setCallbackMap(
-  selection,
-  {
-    selectItem: {
-      validate(this: SelectionCbs['selectItem'], selectableIds: string[]) {
-        if (!selectableIds.contains(this.selectionParams.itemId)) {
-          throw Error(`Invalid id: ${this.selectionParams.itemId}`);
-        }
-      },
-      enter() {}, // do something when selectItem() is entered
-      exit() {}, // do something when selectItem() is exited
-    }
-  } as SelectionCbs
-)
+setCallbackMap(selection, {
+  selectItem: {
+    validate(this: SelectionCbs['selectItem'], selectableIds: string[]) {
+      if (!selectableIds.contains(this.selectionParams.itemId)) {
+        throw Error(`Invalid id: ${this.selectionParams.itemId}`);
+      }
+    },
+    enter() {}, // do something when selectItem() is entered
+    exit() {}, // do something when selectItem() is exited
+  },
+} as SelectionCbs);
 ```
 
 Notes:
@@ -124,7 +121,7 @@ The current version of the `Selection` class does not work out of the box, becau
 implement the `validate` callback using `setCallbackMap`. To fix this you can specify a default set of callbacks when
 you add the `@host` decorator:
 
-```
+```typescript
 // class Selection_select is the same as before
 
 const selectItemDefaultCbs = (selection: Selection) => ({
@@ -153,6 +150,23 @@ class Selection {
 In this case the `selection` instance will work even though we did not call `setCallbackMap`.
 Note that either Aspiration will either use the callbacks that were installed with `setCallbackMap`
 or the default ones, it does not ever try to merge them.
+
+## Be careful with your Promises
+
+If you want to access the callbacks-object in the then-clause of a `Promise`, then you need to create
+a local copy of the values you are interested in. It's not possible to access `this` inside the
+then-clause. In the example below, we see that `this.selectionParams` is cached.
+
+```typescript
+setCallbackMap(selection, {
+  selectItem: {
+    validate(this: SelectionCbs['selectItem'], selectableIds: string[]) {
+      const params = this.selectionParams;
+      postUserAction('selectItem', params).then(() => console.log(params));
+    },
+  },
+} as SelectionCbs);
+```
 
 ## Conclusion
 
