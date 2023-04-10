@@ -50,23 +50,15 @@ function _host(target, propertyName, descriptor, paramNames, createDefaultCbs) {
   return descriptor;
 }
 
-export function host(...args) {
-  if (args.length === 2) {
-    const wrapped = (target, propertyName, descriptor) => {
-      return _host(target, propertyName, descriptor, args[0], args[1]);
-    };
-    return wrapped;
-  }
-
-  if (args.length === 1) {
-    const wrapped = (target, propertyName, descriptor) => {
-      return _host(target, propertyName, descriptor, args[0], () => ({}));
-    };
-    return wrapped;
-  }
-
-  const [target, propertyName, descriptor] = args;
-  return _host(target, propertyName, descriptor, [], () => ({}));
+export function host(paramNames?: string[], createDefaultCbs?: Function) {
+  return (target, propertyName, descriptor) =>
+    _host(
+      target,
+      propertyName,
+      descriptor,
+      paramNames ?? [],
+      createDefaultCbs ?? (() => ({}))
+    );
 }
 
 // This function sets all callbacks for all functions in `host`.
@@ -77,7 +69,7 @@ export function setCallbackMap(host: any, callbackMap: any) {
 }
 
 // This function gets the callbacks for the currently executing function in `host`.
-export function getCallbacks<T>(host) {
+export function getCallbacks<T = unknown>(host) {
   return host[callbacksSymbol] as unknown as T;
 }
 
