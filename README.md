@@ -37,21 +37,32 @@ class Selection {
   ids: Array<string> = [];
 
   selectItem(selectionParams: SelectionParamsT) {
+    // Todo: validate selectionParams. We will use a callback function for this:
+    // cbs.validate(this.selectableIds)
+
     this.ids = handleSelectItem(this.selectableIds, this.selectionParams);
   }
 }
 ```
 
-Next we do three things:
+Our goal is to install a callbacks object that has a `validate` function, and use
+this function inside `selectItem`. We will do this in two steps. First, we
+extend `selectItem` so that it takes a callbacks object. Second, we will install
+the callbacks object that has the `validate` function.
 
-- define a class that contains the callback functions
-- use the `@host` decorator to indicate that we want our function to take callbacks.
-- update the host function to use the set of callbacks.
+For the first step we do the following:
+
+- define a class that contains the callback functions (a `Selection_selectItem` class that has a `validate` function);
+- use the `@host` decorator to indicate that we want our function to take callbacks;
+- use `getCallbacks` inside the host function to obtain the set of callbacks;
+- use the callbacks in the host function (we will call `cbs.validate`).
 
 ```typescript
+import { getCallbacks, stub } from 'aspiration';
+
 class Selection_selectItem extends Cbs {
   selectionParams: SelectionParamsT = stub();
-  validate() {}
+  validate(selectableIds: Array<string>) {}
 }
 
 type SelectionCbs {
@@ -59,13 +70,13 @@ type SelectionCbs {
 }
 
 class Selection {
-  selectableIds?: Array<string>;
+  selectableIds: Array<string> = stub();
   ids: Array<string> = [];
 
   @host(['selectionParams'])
   selectItem(selectionParams: SelectionParamsT) {
-    const cbs = getCallbacks<Selection_selectItem>(this);
-    cbs.validate();
+    const cbs = getCallbacks(this) as SelectionCbs['selectItem'];
+    cbs.validate(this.selectableIds);
     this.ids = handleSelectItem(this.selectableIds, this.selectionParams);
   }
 }
@@ -73,7 +84,10 @@ class Selection {
 
 Notes:
 
-- The host() decorator takes (as its argument) the list of function argument names. It does this so that it can copy all function arguments to fields of the callbacks-object (`cbs`). In the future, when typescript makes it possible to use introspection to detect the argument names, the host() decorator will not require this argument anymore.
+- The host() decorator takes (as its argument) the list of function argument names.
+  It does this so that it can copy all function arguments to fields of the callbacks-object (`cbs`).
+  In the future, when typescript makes it possible to use introspection to detect the argument names,
+  the host() decorator will not require this argument anymore.
 
 - The stub() function is a utility that returns `undefined` cast to `any`. It is used to prevent the
   Typescript checker from complaining about uninitialized callbacks-object members (these members receive
@@ -107,8 +121,7 @@ Notes:
 - you may specify a `enter` and `exit` callback that are called at the start and the end of
   the host function (i.e. `selectItem`). If you inspect the `Selection_selectItem` callbacks-object then you will see that it extends the `Cbs` baseclass that contains `enter` and `exit`.
 - The explicit `this` argument in the `validate` function is not strictly necessary, but it helps the reader
-  of the code who will otherwise be surprised that `this` refers to the callbacks-object and not to the
-  `Selection` instance.
+  of the code who will otherwise be surprised that `this` refers to the callbacks-object and not to the `Selection` instance.
 
 ## Type safety
 
@@ -117,9 +130,9 @@ By doing this, you force Typescript to check the types of the callbacks.
 
 ## Default callbacks
 
-The current version of the `Selection` class does not work out of the box, because the caller needs to
-implement the `validate` callback using `setCallbackMap`. To fix this you can specify a default set of callbacks when
-you add the `@host` decorator:
+The current version of the `Selection` class forces the client to do some work does not work: it needs to
+implement the `validate` callback using `setCallbackMap`. It would be nice to support a default implementation that works
+out of the box. This can be done by specifying a default set of callbacks in the `@host` decorator:
 
 ```typescript
 // class Selection_select is the same as before
@@ -133,22 +146,21 @@ const selectItemDefaultCbs = (selection: Selection) => ({
 });
 
 class Selection {
-  selectableIds?: Array<string>;
+  selectableIds: Array<string> = stub();
   ids: Array<string> = [];
 
   // note that '@host' now takes an extra argument
-
   @host(['selectionParams'], selectItemDefaultCbs)
   selectItem(selectionParams: SelectionParamsT) {
-    const cbs = getCallbacks<Selection_selectItem>(this);
-    cbs.validate();
+    const cbs = getCallbacks(this) as SelectionCbs['selectItem'];
+    cbs.validate(this.selectableIds);
     this.ids = handleSelectItem(this.selectableIds, this.selectionParams);
   }
 }
 ```
 
 In this case the `selection` instance will work even though we did not call `setCallbackMap`.
-Note that either Aspiration will either use the callbacks that were installed with `setCallbackMap`
+Note that Aspiration will either use the callbacks that were installed with `setCallbackMap`
 or the default ones, it does not ever try to merge them.
 
 ## Be careful with your Promises
@@ -167,6 +179,47 @@ setCallbackMap(selection, {
   },
 } as SelectionCbs);
 ```
+
+## An alternative way to declare the callbacks object
+
+The `Selection_selectItem` class above is repeating the arguments of the host function.
+Moreover, it's a bit clunky to introduce a separate class (such as `Selection_selectItem`)
+for every function in `Selection` that takes callbacks. If all host function have a single argument
+called `args` then we can avoid these drawbacks with the following helper functions:
+
+```ts
+import { Cbs, host, stub } from 'aspiration';
+
+export class CbsWithArgs<T extends (...args: any[]) => any> extends Cbs {
+  args: Parameters<T>[0] = stub;
+}
+
+export type DefineCbs<T, U> = {
+  [K in keyof T]: T[K] extends (...args: any[]) => any
+    ? K extends keyof U
+      ? CbsWithArgs<T[K]> & U[K]
+      : CbsWithArgs<T[K]>
+    : never;
+};
+```
+
+Using these functions, we can define `SelectionCbs` as follows:
+
+```ts
+type Cbs = {
+  selectItem: {
+    validate(selectableIds: string[]): void;
+  };
+  // You can declare the callback objects for the other functions in
+  // Selection below (we don't need separate classes such as Selection_selectItem).
+};
+
+export type SelectionCbs = DefineCbs<Selection, Cbs>;
+```
+
+Remember that this works if the host function has a single argument that is called `args`.
+Inside of the `args` argument, we can declare all arguments that the host function requires,
+so this approach does not impose any real limitations.
 
 ## Conclusion
 
