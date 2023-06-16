@@ -184,26 +184,8 @@ setCallbackMap(selection, {
 
 The `Selection_selectItem` class above is repeating the arguments of the host function.
 Moreover, it's a bit clunky to introduce a separate class (such as `Selection_selectItem`)
-for every function in `Selection` that takes callbacks. If all host function have a single argument
-called `args` then we can avoid these drawbacks with the following helper functions:
-
-```ts
-import { Cbs, host, stub } from 'aspiration';
-
-export class CbsWithArgs<T extends (...args: any[]) => any> extends Cbs {
-  args: Parameters<T>[0] = stub;
-}
-
-export type DefineCbs<T, U> = {
-  [K in keyof T]: T[K] extends (...args: any[]) => any
-    ? K extends keyof U
-      ? CbsWithArgs<T[K]> & U[K]
-      : CbsWithArgs<T[K]>
-    : never;
-};
-```
-
-Using these functions, we can define `SelectionCbs` as follows:
+for every function in `Selection` that takes callbacks. If all host functions have a single argument
+called `args` then we can use the DefineCbs helper function to declare `SelectionCbs`:
 
 ```ts
 type Cbs = {
