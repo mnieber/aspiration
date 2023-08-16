@@ -58,7 +58,7 @@ For the first step we do the following:
 - use the callbacks in the host function (we will call `cbs.validate`).
 
 ```typescript
-import { getCallbacks, stub } from 'aspiration';
+import { getCallbacks, stub, Cbs } from 'aspiration';
 
 class Selection_selectItem extends Cbs {
   selectionParams: SelectionParamsT = stub();
@@ -130,7 +130,7 @@ By doing this, you force Typescript to check the types of the callbacks.
 
 ## Default callbacks
 
-The current version of the `Selection` class forces the client to do some work does not work: it needs to
+The current version of the `Selection` class forces the client to do some work: it needs to
 implement the `validate` callback using `setCallbackMap`. It would be nice to support a default implementation that works
 out of the box. This can be done by specifying a default set of callbacks in the `@host` decorator:
 
@@ -185,9 +185,18 @@ setCallbackMap(selection, {
 The `Selection_selectItem` class above is repeating the arguments of the host function.
 Moreover, it's a bit clunky to introduce a separate class (such as `Selection_selectItem`)
 for every function in `Selection` that takes callbacks. If all host functions have a single argument
-called `args` then we can use the DefineCbs helper function to declare `SelectionCbs`:
+called `args` then we can use the `DefineCbs` helper function to declare `SelectionCbs`:
 
 ```ts
+class Selection {
+  // ...
+
+  @host(['args'])
+  selectItem(args: SelectionParamsT) {
+    // ...
+  }
+}
+
 type Cbs = {
   selectItem: {
     validate(selectableIds: string[]): void;
