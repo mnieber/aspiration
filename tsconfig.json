@@ -6,7 +6,9 @@
     "forceConsistentCasingInFileNames": true,
     "isolatedModules": true,
     "jsx": "react",
-    "lib": [],
+    "lib": [
+      "es6"
+    ],
     "module": "esnext",
     "moduleResolution": "node",
     "noUnusedLocals": true,
