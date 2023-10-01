@@ -15,15 +15,21 @@ calls F, then the callbacks are executed (so that things such as logging and val
 In order to understand what F really does, we only need to look at F's body, and at the single place
 where F's callbacks are implemented.
 
-## A quick note on debugging
+## Debugging
 
-With Aspiration you can decorate your functions so that they can receive a callbacks object. To avoid stepping into the decorator function, add `/aspiration/` to the ignore list of your debugger.
+With Aspiration you can wrap your functions so that they can receive a callbacks object.
+To avoid stepping into the wrapper function, add `/aspiration/` to the ignore list of your debugger.
 
-## The host decorator
+## A quick note on the history of this library
 
-Assume that we have a function (let's call it the `host` function) that we wish to extend using AOP.
-In the example below, the host function is `Selection.selectItem`. Currently, it does not yet take any
-callbacks:
+This library used to be more complex. I realized I could achieve the same goals in a simpler way.
+Fortunately, very likely, no one except for myself ever used the old version.
+
+## The withCbs wrapper function
+
+Assume that we have a class (that I shall call the `container`) with a function (let's call it the `host` function)
+that we wish to extend using AOP. In the example below, the host function is `Selection.selectItem`. Currently,
+it does not yet take any callbacks:
 
 ```typescript
 export type SelectionParamsT = {
@@ -36,187 +42,159 @@ class Selection {
   selectableIds?: Array<string>;
   ids: Array<string> = [];
 
-  selectItem(selectionParams: SelectionParamsT) {
+  selectItem(args: { selectionParams: SelectionParamsT }) {
     // Todo: validate selectionParams. We will use a callback function for this:
     // cbs.validate(this.selectableIds)
 
-    this.ids = handleSelectItem(this.selectableIds, this.selectionParams);
+    this.ids = handleSelectItem(this.selectableIds, args.selectionParams);
   }
 }
 ```
 
 Our goal is to install a callbacks object that has a `validate` function, and use
-this function inside `selectItem`. We will do this in two steps. First, we
-extend `selectItem` so that it takes a callbacks object. Second, we will install
-the callbacks object that has the `validate` function.
+this function inside `selectItem`. We will do this in three steps:
 
-For the first step we do the following:
+- First, we will add a callback-map in container class.
+- Then, we'll update the host function so that it uses the callback-map.
+- Finally, we'll implement the callbacks in the client code.
 
-- define a class that contains the callback functions (a `Selection_selectItem` class that has a `validate` function);
-- use the `@host` decorator to indicate that we want our function to take callbacks;
-- use `getCallbacks` inside the host function to obtain the set of callbacks;
-- use the callbacks in the host function (we will call `cbs.validate`).
+For the first two steps, we'll make the following changes:
 
-```typescript
-import { getCallbacks, stub, Cbs } from 'aspiration';
-
-class Selection_selectItem extends Cbs {
-  selectionParams: SelectionParamsT = stub();
-  validate(selectableIds: Array<string>) {}
-}
-
-type SelectionCbs {
-  selectItem: Selection_selectItem;
-}
+```ts
+import { withCbs, type CallbackMap } from 'aspiration';
 
 class Selection {
-  selectableIds: Array<string> = stub();
-  ids: Array<string> = [];
+  // The CallbackMap type adds the enter() and exit() callbacks that
+  // will be discussed later.
+  callbackMap = {} as CallbackMap<{
+    selectItem: {
+      validate: (selectableIds: string[]) => void;
+    };
+  }>;
 
-  @host(['selectionParams'])
-  selectItem(selectionParams: SelectionParamsT) {
-    const cbs = getCallbacks(this) as SelectionCbs['selectItem'];
-    cbs.validate(this.selectableIds);
-    this.ids = handleSelectItem(this.selectableIds, this.selectionParams);
+  // ...
+
+  selectItem(args: { selectionParams: SelectionParamsT }) {
+    return withCbs(this.callbackMap, 'selectItem', args, (cbs) => {
+      cbs.validate(this.selectableIds);
+      // ...
+    });
   }
 }
 ```
 
-Notes:
+As you can see, the approach is very simple. The container instance has a `callbackMap` object with
+callback functions that can be used in any of the member functions. The host function uses the `callbackMap`
+by passing it to `withCbs`. Then, `withCbs` does the following:
 
-- The host() decorator takes (as its argument) the list of function argument names.
-  It does this so that it can copy all function arguments to fields of the callbacks-object (`cbs`).
-  In the future, when typescript makes it possible to use introspection to detect the argument names,
-  the host() decorator will not require this argument anymore.
+- it constructs a callbacks-object (`cbs`) that is a copy of `this.callbackMap['selectItem]`;
+- it calls `cbs.enter()` (if this function exists);t
+- it executes the body of the host function (the last argument of `withCbs`), passing in
+  the callbacks-object. It stores the return value;
+- it calls `cbs.exit()` (if this function exists);
+- it returns the return value.
 
-- The stub() function is a utility that returns `undefined` cast to `any`. It is used to prevent the
-  Typescript checker from complaining about uninitialized callbacks-object members (these members receive
-  their value when the host function is called).
+The callbacks-object contains a copy of the host function arguments, so that each callback has access to
+these arguments via `this.args` (we shall see this in action later).
 
-## The setCallbackMap function
+Now all that remains to be done is to install the callback functions.
 
-At this point, the host function uses callbacks, but we still have to define them.
-This is done with the `setCallbackMap` function, which installs callbacks for every host function in the
-host class instance.
+```ts
+import { type Cbs } from 'aspiration';
 
-```typescript
 const selection = new Selection();
-setCallbackMap(selection, {
+
+selection.callbackMap = {
   selectItem: {
-    validate(this: SelectionCbs['selectItem'], selectableIds: string[]) {
-      if (!selectableIds.contains(this.selectionParams.itemId)) {
-        throw Error(`Invalid id: ${this.selectionParams.itemId}`);
+    validate(this: Cbs<Selection['selectItem']>, selectableIds: string[]) {
+      if (!selectableIds.contains(this.args.selectionParams.itemId)) {
+        throw Error(`Invalid id: ${this.args.selectionParams.itemId}`);
       }
     },
-    enter() {}, // do something when selectItem() is entered
-    exit() {}, // do something when selectItem() is exited
+    // Log selectionParams when selectItem() is entered
+    enter(this: Cbs<Selection['selectItem']>) {
+      console.log(this.args.selectionParams);
+    },
+    // do something when selectItem() is exited
+    exit() {},
   },
-} as SelectionCbs);
+};
 ```
 
-Notes:
-
-- we installed callbacks for `selectItem` in the `Selection` host class instance.
-- each callback function has a `this` argument that is bound to the callbacks-object. This callbacks-object contains the host function arguments (in this case: `selectionParams`) as field values.
-- you may specify a `enter` and `exit` callback that are called at the start and the end of
-  the host function (i.e. `selectItem`). If you inspect the `Selection_selectItem` callbacks-object then you will see that it extends the `Cbs` baseclass that contains `enter` and `exit`.
-- The explicit `this` argument in the `validate` function is not strictly necessary, but it helps the reader
-  of the code who will otherwise be surprised that `this` refers to the callbacks-object and not to the `Selection` instance.
+The `Cbs<Selection['selectItem']>` type contains the definition of the callbacks-object of
+the `selectItem` host function, including the `enter()` and `exit()` callbacks, and including
+the `this.args` object with the arguments of the host function. In the implementation of the
+`enter` callback, we see an example of using `this.args`.
 
 ## Type safety
 
-In the code example above you can see that the second argument to `setCallbackMap` is cast using `as SelectionCbs`.
-By doing this, you force Typescript to check the types of the callbacks.
+In general, this approach is type-safe. However, the programmer has to make sure that the
+correct type is used in the definition of `this` in the callback implementation
+(e.g. `Cbs<Selection['selectItem']>`).
 
 ## Default callbacks
 
 The current version of the `Selection` class forces the client to do some work: it needs to
 implement the `validate` callback using `setCallbackMap`. It would be nice to support a default implementation that works
-out of the box. This can be done by specifying a default set of callbacks in the `@host` decorator:
+out of the box. This can be done by merging with a default callbackMap:
 
-```typescript
-// class Selection_select is the same as before
+```ts
+import { mergeDeepLeft, withCbs, type CallbackMap } from 'aspiration';
 
-const selectItemDefaultCbs = (selection: Selection) => ({
-  validate(this: SelectionCbs['selectItem'], selectableIds: string[]) {
-    if (!selectableIds.contains(this.selectionParams.itemId)) {
-      throw Error(`Invalid id: ${this.selectionParams.itemId}`);
+const defaultCallbackMap = (selection: Selection) => ({
+  selectItem: {
+    validate: (this: Cbs<Selection['selectItem']>) {
+      handleValidation(selection, this.args.selectionParams);
     }
-  },
+  }
 });
 
 class Selection {
-  selectableIds: Array<string> = stub();
-  ids: Array<string> = [];
+  callbackMap_ = {} as CallbackMap<{
+    // The selectItem callbacks are now optional
+    selectItem?: {
+      // If you choose to implement the selectItem callbacks, then validate is optional
+      validate?: (selectableIds: string[]) => void;
+    }
+  }>;
 
-  // note that '@host' now takes an extra argument
-  @host(['selectionParams'], selectItemDefaultCbs)
-  selectItem(selectionParams: SelectionParamsT) {
-    const cbs = getCallbacks(this) as SelectionCbs['selectItem'];
-    cbs.validate(this.selectableIds);
-    this.ids = handleSelectItem(this.selectableIds, this.selectionParams);
+  get callbackMap() {
+    return this.callbackMap_;
   }
+
+  set callbackMap(cbs: typeof this.callbackMap_) {
+    this.callbackMap_ = mergeDeepLeft(cbs, defaultCallbackMap(this));
+  }
+
+  // ...
 }
 ```
 
-In this case the `selection` instance will work even though we did not call `setCallbackMap`.
-Note that Aspiration will either use the callbacks that were installed with `setCallbackMap`
-or the default ones, it does not ever try to merge them.
+In this case the `selection` instance will work even when the client doesn't implement
+the callback-map.
 
 ## Be careful with your Promises
 
 If you want to access the callbacks-object in the then-clause of a `Promise`, then you need to create
 a local copy of the values you are interested in. It's not possible to access `this` inside the
-then-clause. In the example below, we see that `this.selectionParams` is cached.
+then-clause. In the example below, we see that `this.args.selectionParams` is cached.
 
 ```typescript
 setCallbackMap(selection, {
   selectItem: {
     validate(this: SelectionCbs['selectItem'], selectableIds: string[]) {
-      const params = this.selectionParams;
-      postUserAction('selectItem', params).then(() => console.log(params));
+      const params = this.args.selectionParams;
+      Promise.resolve().then(() => console.log(params));
     },
   },
 } as SelectionCbs);
 ```
 
-## An alternative way to declare the callbacks object
-
-The `Selection_selectItem` class above is repeating the arguments of the host function.
-Moreover, it's a bit clunky to introduce a separate class (such as `Selection_selectItem`)
-for every function in `Selection` that takes callbacks. If all host functions have a single argument
-called `args` then we can use the `DefineCbs` helper function to declare `SelectionCbs`:
-
-```ts
-class Selection {
-  // ...
-
-  @host(['args'])
-  selectItem(args: SelectionParamsT) {
-    // ...
-  }
-}
-
-type Cbs = {
-  selectItem: {
-    validate(selectableIds: string[]): void;
-  };
-  // You can declare the callback objects for the other functions in
-  // Selection below (we don't need separate classes such as Selection_selectItem).
-};
-
-export type SelectionCbs = DefineCbs<Selection, Cbs>;
-```
-
-Remember that this works if the host function has a single argument that is called `args`.
-Inside of the `args` argument, we can declare all arguments that the host function requires,
-so this approach does not impose any real limitations.
-
 ## Conclusion
 
 Aspiration offers a light-weight and effective approach for extending functions with callbacks. It's used in much the
 same way as other functions that take callbacks, but there are some differences. First of all, the callbacks are installed
-in a single place, before the host functions are called. To predict the results of the host function, it's sufficient
-to inspect this single location. Secondly, each callback function automatically gets access to the arguments of the host
-function, which tends to reduce clutter in the code. This combination of features makes it possible to do Aspect Oriented
-Programming in an agile and predictable manner.
+in a single place, before the host functions are called. Secondly, each callback function automatically gets access to the
+arguments of the host function, which tends to reduce clutter in the code. To predict the results of the host function,
+it's sufficient to inspect its definition, as well as the location where the callbacks are implemented. This combination of
+features makes it possible to do Aspect Oriented Programming in an agile and predictable manner.

@@ -1,37 +1,30 @@
-import { symbols } from '../internal/symbols';
-import { getAdmin } from '../internal/utils';
-import { host } from './host';
+export const getCbs = <T>(cbs: T, args: any) => {
+  return {
+    ...cbs,
+    args,
+  };
+};
 
-// This function sets all callbacks for all functions in `host`.
-export function setCallbackMap(host: any, callbackMap: any) {
-  const admin = getAdmin(host);
-  admin.callbackMap = callbackMap;
-  admin.defaultCallbackMap = admin.defaultCallbackMap ?? {};
-}
+export type Cbs<T extends (...args: any[]) => any> = {
+  args: Parameters<T>[0];
+};
 
-// This function gets the callbacks for the currently executing function in `host`.
-export function getCallbacks<T = unknown>(host) {
-  return host[symbols.cbs] as unknown as T;
-}
+export type CallbackMap<T> = {
+  [K in keyof T]: T[K] & {
+    enter?: () => void;
+    exit?: () => void;
+  };
+};
 
-export class Cbs {
-  enter() {}
-  exit() {}
-}
-
-export const stub = undefined as any;
-
-export const withCbs = (createDefaultCbs?: Function) =>
-  host(['args'], createDefaultCbs);
-
-export class CbsWithArgs<T extends (...args: any[]) => any> extends Cbs {
-  args: Parameters<T>[0] = stub;
-}
-
-export type DefineCbs<T, U> = {
-  [K in keyof T]: T[K] extends (...args: any[]) => any
-    ? K extends keyof U
-      ? CbsWithArgs<T[K]> & U[K]
-      : CbsWithArgs<T[K]>
-    : never;
+export const withCbs = <CbsT, K extends keyof CbsT>(
+  cbs: CbsT,
+  fnName: K,
+  args: any,
+  f: (cbs: CbsT[K]) => any
+) => {
+  const cbsWithArgs = getCbs(cbs[fnName], args) as CbsT[K];
+  (cbsWithArgs as any).enter && (cbsWithArgs as any).enter();
+  const result = f(cbsWithArgs);
+  (cbsWithArgs as any).exit && (cbsWithArgs as any).exit();
+  return result;
 };

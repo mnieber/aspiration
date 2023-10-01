@@ -1,10 +1,2 @@
-export {
-  Cbs,
-  CbsWithArgs,
-  getCallbacks,
-  setCallbackMap,
-  stub,
-  withCbs,
-} from './lib/cbs';
-export type { DefineCbs } from './lib/cbs';
-export { host } from './lib/host';
+export { getCbs, withCbs, type CallbackMap, type Cbs } from './lib/cbs';
+export { mergeDeepLeft } from './lib/mergeDeepLeft';
